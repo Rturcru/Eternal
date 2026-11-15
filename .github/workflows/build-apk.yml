@@ -1,0 +1,84 @@
+name: Gerar APK
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GODOT_VERSION: "4.6.1"
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Instalar ferramentas do Android SDK
+        run: sdkmanager "platform-tools" "build-tools;35.0.0" "platforms;android-35"
+
+      - name: Baixar Godot e templates de exportação
+        run: |
+          base=https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable
+          wget -q $base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip
+          unzip -q Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip
+          sudo mv Godot_v${GODOT_VERSION}-stable_linux.x86_64 /usr/local/bin/godot
+          wget -q $base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz
+          dir=~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          mkdir -p $dir
+          unzip -q Godot_v${GODOT_VERSION}-stable_export_templates.tpz
+          mv templates/* $dir/
+          rm -rf templates *.tpz *.zip
+
+      - name: Configurar Godot para Android
+        run: |
+          major_minor=$(echo $GODOT_VERSION | cut -d. -f1,2)
+          mkdir -p ~/.config/godot
+          cat > ~/.config/godot/editor_settings-${major_minor}.tres <<EOT
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_SDK_ROOT"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/debug_keystore = "$GITHUB_WORKSPACE/android/debug.keystore"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          EOT
+
+      - name: Exportar APK
+        env:
+          GODOT_ANDROID_KEYSTORE_DEBUG_PATH: ${{ github.workspace }}/android/debug.keystore
+          GODOT_ANDROID_KEYSTORE_DEBUG_USER: androiddebugkey
+          GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD: android
+        run: |
+          godot --headless --import || true
+          mkdir -p build
+          godot --headless --export-debug "Android" build/EternalNight.apk
+          ls -la build
+          test -f build/EternalNight.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EternalNight-apk
+          path: build/EternalNight.apk
+
+      - name: Publicar na página de Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Eternal Night (build ${{ github.run_number }})
+          prerelease: true
+          files: build/EternalNight.apk
+          body: |
+            APK gerado automaticamente a partir do commit ${{ github.sha }}.
+            Baixe o arquivo EternalNight.apk abaixo e instale no celular.
