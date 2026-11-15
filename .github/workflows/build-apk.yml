@@ -22,10 +22,13 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - uses: android-actions/setup-android@v3
-
-      - name: Instalar ferramentas do Android SDK
-        run: sdkmanager "platform-tools" "build-tools;35.0.0" "platforms;android-35"
+      - name: Instalar ferramentas do Android SDK (o runner já tem o SDK)
+        run: |
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          sdkm=$(ls -d $ANDROID_SDK_ROOT/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
+          echo "usando $sdkm"
+          yes | $sdkm --licenses > /dev/null || true
+          $sdkm "platform-tools" "build-tools;35.0.0" "platforms;android-35"
 
       - name: Baixar Godot e templates de exportação
         run: |
